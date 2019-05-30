@@ -41,7 +41,7 @@ def main():
     ka = True
     while ka:
         sda4 = one()
-        if sda4>80:
+        if sda4>60:
             time.sleep(20)
         else:
             ka = False
@@ -137,7 +137,7 @@ def two():
     ka = True
     while ka:
         sda4 = one()
-        if sda4>80:
+        if sda4>60:
             time.sleep(20)
         else:
             ka = False
@@ -214,4 +214,7 @@ def partition(input_filename, temp_output_filename, fileCount, quality_encoding,
     else:
         print "No valid FASTQ reads were provided."
 
-if __name__ == "__main__": main()
+if __name__ == "__main__":
+    main()
+
+
