@@ -38,76 +38,70 @@ def main():
         parser.error("Incorrect number of arguments")
         parser.print_usage()
 
-    ka = True
-    while ka:
-        sda4 = one()
-        if sda4>60:
-            time.sleep(20)
+
+    split_program = "split"
+    cat_program = "cat"
+    input_filename = os.path.abspath(ARGV[0])
+    output_filename = os.path.abspath(ARGV[2])
+    number_of_processes = 1;
+    number_of_processes = int(options.nprocesses)
+    file_prefix = "temp_groomer_part_"
+
+    t1 = time.time()
+    old_path = os.getcwd()
+
+    lines_per_process,number_of_lines = calculate_lines_per_process(input_filename, number_of_processes)
+    temp_dir_name = move_to_temp_dir()
+    sequences = number_of_lines/4;
+    cmd = [split_program, "-l"+str(lines_per_process), input_filename, file_prefix]
+#    print "The cmd is: " , cmd
+    subprocess.call(cmd)
+#    print "Finished"
+    file_count = 0;
+    keep_checking = True
+    processes = []
+    output_filenames = []
+    while keep_checking:
+
+        # only need to support 26x26 different processes, so do it brute force (ie not in a loop) for 2 chars.
+        lastchar = string.letters[file_count % len(string.letters)]
+        firstchar = string.letters[(file_count / len(string.letters)) % len(string.letters)]
+        temp_input_filename = "%s%c%c" % (file_prefix, firstchar, lastchar)
+
+ #       print 'looking for ' + temp_input_filename
+        if os.path.exists(temp_input_filename):
+#            print 'found ' + temp_input_filename
+            temp_output_filename = temp_input_filename + "_output"
+            output_filenames.append(temp_output_filename)
+            p = Process(target=partition, args=([temp_input_filename, temp_output_filename, file_count, options.encoding, options.verbose]))
+            p.start()
+            processes.append(p)
+            file_count = file_count + 1
         else:
-            ka = False
-            split_program = "split"
-            cat_program = "cat"
-            input_filename = os.path.abspath(ARGV[0])
-            output_filename = os.path.abspath(ARGV[2])
-            number_of_processes = 1;
-            number_of_processes = int(options.nprocesses)
-            file_prefix = "temp_groomer_part_"
+            break
+    for p in processes :
+        p.join()
+    cat_params = [cat_program]
+    cat_params.extend(output_filenames)
+    with open(output_filename, 'w') as catOutputFile:
+        subprocess.call(cat_params, stdout=catOutputFile)
+    summarize_input = options.verbose
+    input_type = ARGV[1]
+    output_type = ARGV[3]
+    print "Groomed %i %s reads into %s reads." % ( sequences, input_type, output_type )
 
-            t1 = time.time()
-            old_path = os.getcwd()
+    aggregators = []
+    if summarize_input:
+        for temp_output_filename in output_filenames :
+            with open(temp_output_filename + "_summary", 'r') as summaryLogFile:
+                temp_aggregator = pickle.load(summaryLogFile)
+                aggregators.append(temp_aggregator)
 
-            lines_per_process,number_of_lines = calculate_lines_per_process(input_filename, number_of_processes)
-            temp_dir_name = move_to_temp_dir()
-            sequences = number_of_lines/4;
-            cmd = [split_program, "-l"+str(lines_per_process), input_filename, file_prefix]
-        #    print "The cmd is: " , cmd
-            subprocess.call(cmd)
-        #    print "Finished"
-            file_count = 0;
-            keep_checking = True
-            processes = []
-            output_filenames = []
-            while keep_checking:
-
-                # only need to support 26x26 different processes, so do it brute force (ie not in a loop) for 2 chars.
-                lastchar = string.letters[file_count % len(string.letters)]
-                firstchar = string.letters[(file_count / len(string.letters)) % len(string.letters)]
-                temp_input_filename = "%s%c%c" % (file_prefix, firstchar, lastchar)
-
-         #       print 'looking for ' + temp_input_filename
-                if os.path.exists(temp_input_filename):
-        #            print 'found ' + temp_input_filename
-                    temp_output_filename = temp_input_filename + "_output"
-                    output_filenames.append(temp_output_filename)
-                    p = Process(target=partition, args=([temp_input_filename, temp_output_filename, file_count, options.encoding, options.verbose]))
-                    p.start()
-                    processes.append(p)
-                    file_count = file_count + 1
-                else:
-                    break
-            for p in processes :
-                p.join()
-            cat_params = [cat_program]
-            cat_params.extend(output_filenames)
-            with open(output_filename, 'w') as catOutputFile:
-                subprocess.call(cat_params, stdout=catOutputFile)
-            summarize_input = options.verbose
-            input_type = ARGV[1]
-            output_type = ARGV[3]
-            print "Groomed %i %s reads into %s reads." % ( sequences, input_type, output_type )
-
-            aggregators = []
-            if summarize_input:
-                for temp_output_filename in output_filenames :
-                    with open(temp_output_filename + "_summary", 'r') as summaryLogFile:
-                        temp_aggregator = pickle.load(summaryLogFile)
-                        aggregators.append(temp_aggregator)
-
-                print_aggregators(aggregators)
-            os.chdir(old_path)
-            shutil.rmtree(temp_dir_name)
-            time2 = time.time()
-            print 'Groomer took: %0.3f ms using %d processes' % (((time2 - t1)*1000.0), number_of_processes)
+        print_aggregators(aggregators)
+    os.chdir(old_path)
+    shutil.rmtree(temp_dir_name)
+    time2 = time.time()
+    print 'Groomer took: %0.3f ms using %d processes' % (((time2 - t1)*1000.0), number_of_processes)
 
 def calculate_lines_per_process(input_filename, number_of_processes):
     wc_program = "wc"
@@ -117,31 +111,6 @@ def calculate_lines_per_process(input_filename, number_of_processes):
     exact_lines_per_process = number_of_lines * 1.0 / number_of_processes
     lines_per_process = int(math.ceil((exact_lines_per_process / 4.0))) * 4
     return lines_per_process,number_of_lines
-
-
-def one():
-    sstr = os.popen("df -lh").readlines()
-    for i in sstr:
-        if 'sda4' in i:
-            h = i.split(' ')
-            for hh in h:
-                if '%' in hh:
-                    ha = hh.replace('%','')
-                    print(ha)
-                    return int(ha)
-            print(i)
-    return 50
-
-
-def two():
-    ka = True
-    while ka:
-        sda4 = one()
-        if sda4>60:
-            time.sleep(20)
-        else:
-            ka = False
-
 
 def move_to_temp_dir():
     dirExists = False;
@@ -214,7 +183,4 @@ def partition(input_filename, temp_output_filename, fileCount, quality_encoding,
     else:
         print "No valid FASTQ reads were provided."
 
-if __name__ == "__main__":
-    main()
-
-
+if __name__ == "__main__": main()
